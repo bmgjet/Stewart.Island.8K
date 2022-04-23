@@ -1,16 +1,14 @@
-using Rust;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.AI;
 namespace Oxide.Plugins
 {
-    [Info("StewartIsland8K", "bmgjet", "1.0.0")]
-    [Description("Functions Required for True Stewart Island 8K Map")]
-    public class StewartIsland8K : RustPlugin
-    {
-        public Timer CargoCheck;
+	[Info("StewartIsland8K", "bmgjet", "1.0.0")]
+	[Description("Functions Required for True Stewart Island 8K Map")]
+	public class StewartIsland8K : RustPlugin
+	{
+		public Timer CargoCheck;
 		private Timer TrainCheck;
 		public static StewartIsland8K plugin;
 		public List<Vector3> RailPath = new List<Vector3>();
@@ -18,55 +16,81 @@ namespace Oxide.Plugins
 		public bool TrainUnlimitedFuel = true;
 		public bool AllowWorkCarts = true;
 		public bool AllowAboveGroundCarts = true;
+		public int MapLimits = 4090;
 		private string WorkCartPrefab = "assets/content/vehicles/workcart/workcart.entity.prefab";
 		private string AboveGroundTrainPrefab = "assets/content/vehicles/traintemp/trainenginetemp.entity.prefab";
-		private void Init(){plugin = this;}
+		private void Init() { plugin = this; }
 		private void OnServerInitialized(bool initial) { if (initial) { DelayStaryUp(); } else { Startup(); } }
-        private void DelayStaryUp() { timer.Once(10f, () => { try { if (Rust.Application.isLoading) { DelayStaryUp(); return; } } catch { } Startup(); }); }
-        private void Startup() { ServerMgr.Instance.StartCoroutine(GeneratRailGrid()); foreach (BaseNetworkable vehicle in BaseNetworkable.serverEntities.entityList.Values) { if (vehicle is BaseVehicle && vehicle.GetComponent<EdgeTeleport>() == null) vehicle.gameObject.AddComponent<EdgeTeleport>(); } }
-        void OnTerrainCreate(TerrainGenerator _terrain) { Puts("Map by bmgjet"); World.Size = 8000; ConVar.Server.worldsize = (int)8000; }
-        private void OnEntitySpawned(BaseEntity baseEntity)
-        {
-            if (!Rust.Application.isLoading && !Rust.Application.isLoadingSave)
-            {
-                if (baseEntity is CargoShip) { baseEntity.transform.position = TerrainMeta.Path.OceanPatrolFar.GetRandom(); return; }
-                BaseVehicle vehicle = baseEntity as BaseVehicle;
-                if (vehicle != null) if (vehicle.GetComponent<EdgeTeleport>() == null) { vehicle.gameObject.AddComponent<EdgeTeleport>(); return; }
-            }
-        }
-        private void Unload()
-        {
-            foreach (BaseNetworkable vehicle in BaseNetworkable.serverEntities.entityList.Values)
-            {
-                if (vehicle is BaseVehicle)
-                {
-                    EdgeTeleport et = vehicle.GetComponent<EdgeTeleport>();
-                    if (et != null) { UnityEngine.Object.Destroy(et); }
+		private void DelayStaryUp() { timer.Once(10f, () => { try { if (Rust.Application.isLoading) { DelayStaryUp(); return; } } catch { } Startup(); }); }
+		private void Startup() { ServerMgr.Instance.StartCoroutine(GeneratRailGrid()); foreach (BaseNetworkable vehicle in BaseNetworkable.serverEntities.entityList.Values) { if (vehicle is BaseVehicle && vehicle.GetComponent<EdgeTeleport>() == null) vehicle.gameObject.AddComponent<EdgeTeleport>(); } ValidBounds.Instance.worldBounds.SetMinMax(new Vector3(MapLimits * -1, MapLimits * -1, MapLimits * -1), new Vector3(MapLimits, MapLimits, MapLimits)); }
+		void OnTerrainCreate(TerrainGenerator _terrain) { Puts("Map by bmgjet"); World.Size = 8000; ConVar.Server.worldsize = (int)8000; }
+		private void OnEntitySpawned(BaseEntity baseEntity)
+		{
+			if (!Rust.Application.isLoading && !Rust.Application.isLoadingSave)
+			{
+				if (baseEntity is CargoShip) { baseEntity.transform.position = TerrainMeta.Path.OceanPatrolFar.GetRandom(); return; }
+				BaseVehicle vehicle = baseEntity as BaseVehicle;
+				if (vehicle != null) if (vehicle.GetComponent<EdgeTeleport>() == null) { vehicle.gameObject.AddComponent<EdgeTeleport>(); return; }
+			}
+		}
+
+		private void Unload()
+		{
+			foreach (BaseNetworkable vehicle in BaseNetworkable.serverEntities.entityList.Values)
+			{
+				if (vehicle is BaseVehicle)
+				{
+					EdgeTeleport et = vehicle.GetComponent<EdgeTeleport>();
+					if (et != null) { UnityEngine.Object.Destroy(et); }
 					LazyRail lr = vehicle.GetComponent<LazyRail>();
 					if (lr != null) { UnityEngine.Object.Destroy(lr); }
 				}
-            }
+			}
 			if (TrainCheck != null) { TrainCheck.Destroy(); }
 			plugin = null;
-        }
-		private void OnEntityDeath(BaseCombatEntity entity, HitInfo info){if (entity != null && info != null) { if (Trains.Contains(entity)) { Trains.Remove(entity); } }}
-		private object OnEntityDismounted(BaseMountable mount, BasePlayer player) { if (player.IsNpc && mount.VehicleParent() is CH47Helicopter) { player.Invoke(() => { if (player == null) { return; } BaseNavigator BN = player.GetComponent<BaseNavigator>(); if (BN == null) { return; } NavMeshHit hit; if (NavMesh.SamplePosition(player.transform.position, out hit, 30, -1)) { player.gameObject.layer = 17; player.ServerPosition = hit.position; BN.Agent.Warp(player.ServerPosition); player.Invoke(() => BN.CanUseNavMesh = true, 2f); } }, 1f); } return null; }
-        private object OnCargoShipEgress(CargoShip cs)
+		}
+
+		private void OnPlayerDeath(BasePlayer basePlayer)
         {
-            if (cs != null)
+			if(basePlayer.transform.position.x > 4000)
             {
-                bool BlockEgress = false;
-                if (TerrainMeta.BiomeMap.GetBiomeMaxType(cs.transform.position, -1) == 8) { BlockEgress = true; }
-                if (BlockEgress)
-                {
-                    Timer CheckEgress = timer.Once(30f, () => { if (cs != null) cs.StartEgress(); });
-                    return true;
-                }
-				if(TrainCheck != null) { TrainCheck.Destroy(); }
-                if (CargoCheck != null) { CargoCheck.Destroy(); }
-            }
-            return null;
-        }
+				basePlayer.transform.position = new Vector3(4000, basePlayer.transform.position.y, basePlayer.transform.position.z);
+				return;
+			}
+			if (basePlayer.transform.position.x < -4000)
+			{
+				basePlayer.transform.position = new Vector3(-4000, basePlayer.transform.position.y, basePlayer.transform.position.z);
+				return;
+			}
+			if (basePlayer.transform.position.z < -4000)
+			{
+				basePlayer.transform.position = new Vector3(basePlayer.transform.position.x, basePlayer.transform.position.y, -4000);
+				return;
+			}
+			if (basePlayer.transform.position.z > 4000)
+			{
+				basePlayer.transform.position = new Vector3(basePlayer.transform.position.x, basePlayer.transform.position.y, 4000);
+				return;
+			}
+		}
+		private void OnEntityDeath(BaseCombatEntity entity, HitInfo info) { if (entity != null && info != null) { if (Trains.Contains(entity)) { Trains.Remove(entity); } } }
+		private object OnEntityDismounted(BaseMountable mount, BasePlayer player) { if (player.IsNpc && mount.VehicleParent() is CH47Helicopter) { player.Invoke(() => { if (player == null) { return; } BaseNavigator BN = player.GetComponent<BaseNavigator>(); if (BN == null) { return; } UnityEngine.AI.NavMeshHit hit; if (UnityEngine.AI.NavMesh.SamplePosition(player.transform.position, out hit, 30, -1)) { player.gameObject.layer = 17; player.ServerPosition = hit.position; BN.Agent.Warp(player.ServerPosition); player.Invoke(() => BN.CanUseNavMesh = true, 2f); } }, 1f); } return null; }
+		private object OnCargoShipEgress(CargoShip cs)
+		{
+			if (cs != null)
+			{
+				bool BlockEgress = false;
+				if (TerrainMeta.BiomeMap.GetBiomeMaxType(cs.transform.position, -1) == 8) { BlockEgress = true; }
+				if (BlockEgress)
+				{
+					Timer CheckEgress = timer.Once(30f, () => { if (cs != null) cs.StartEgress(); });
+					return true;
+				}
+				if (TrainCheck != null) { TrainCheck.Destroy(); }
+				if (CargoCheck != null) { CargoCheck.Destroy(); }
+			}
+			return null;
+		}
 		private void CheckTrains()
 		{
 			if (Rust.Application.isLoading)
@@ -152,43 +176,48 @@ namespace Oxide.Plugins
 			plugin.TrainCheck = timer.Every(120, () => { CheckTrains(); });
 		}
 		private class EdgeTeleport : MonoBehaviour
-        {
+		{
 			BaseEntity baseEntity;
-            BaseMountable vehicle;
+			BaseMountable vehicle;
 			TrainCar _train;
-            bool halftick = false;
+			float Min;
+			float Max;
+			bool halftick = false;
 			bool run = false;
-            private void Awake() {
+			private void Awake()
+			{
 				baseEntity = GetComponent<BaseEntity>();
 				_train = baseEntity as TrainCar;
-				if(_train != null)
-                {
+				if (_train != null)
+				{
 					baseEntity.gameObject.AddComponent<LazyRail>();
 					return;
 				}
-				if(baseEntity is Horse || baseEntity is ModularCar){return;}
+				if (baseEntity is Horse || baseEntity is ModularCar) { return; }
 				vehicle = baseEntity as BaseMountable;
-				if(vehicle != null){run = true;}
+				Min = (plugin.MapLimits - 20f) * -1;
+				Max = (plugin.MapLimits - 20f);
+				if (vehicle != null) { run = true; }
 			}
-            private void FixedUpdate()
-            {
+			private void FixedUpdate()
+			{
 				if (!run) return;
-                if (halftick) { halftick = false; return; } else { halftick = true; }
-                if (vehicle == null) Destroy(this);
-                if (!vehicle.IsMounted()) { return; }
-                if (vehicle.transform.position.x > 3910f || vehicle.transform.position.x < -3910)
-                {
-                    vehicle.transform.position = new Vector3(vehicle.transform.position.x * -0.98f, vehicle.transform.position.y, vehicle.transform.position.z);
-                    vehicle.TransformChanged();
-                }
-                else if (vehicle.transform.position.z > 3910f || vehicle.transform.position.z < -3910)
-                {
-                    vehicle.transform.position = new Vector3(vehicle.transform.position.x, vehicle.transform.position.y, vehicle.transform.position.z * -0.98f);
-                    vehicle.TransformChanged();
-                    return;
-                }
-            }
-        }
+				if (halftick) { halftick = false; return; } else { halftick = true; }
+				if (vehicle == null) Destroy(this);
+				if (!vehicle.IsMounted()) { return; }
+				if (vehicle.transform.position.x > Max || vehicle.transform.position.x < Min)
+				{
+					vehicle.transform.position = new Vector3(vehicle.transform.position.x * -0.98f, vehicle.transform.position.y, vehicle.transform.position.z);
+					vehicle.TransformChanged();
+				}
+				else if (vehicle.transform.position.z > Max || vehicle.transform.position.z < Min)
+				{
+					vehicle.transform.position = new Vector3(vehicle.transform.position.x, vehicle.transform.position.y, vehicle.transform.position.z * -0.98f);
+					vehicle.TransformChanged();
+					return;
+				}
+			}
+		}
 		private class LazyRail : MonoBehaviour
 		{
 			public BaseEntity _train;
@@ -199,15 +228,15 @@ namespace Oxide.Plugins
 			{
 				plugin.NextFrame(() =>
 				{
-					_train = GetComponent<BaseEntity>();
+					try{_train = GetComponent<BaseEntity>();}catch { }
 					if (_train == null) { return; }
 					_trainEngine = _train as TrainEngine;
 					if (_trainEngine == null) { return; }
 					_trainEngine.collisionEffect.guid = null;
 					_trainCar = _train as TrainCar;
 					if (_trainCar == null) { return; }
-					_trainCar.frontCollisionTrigger.interestLayers = Layers.Mask.Vehicle_World;
-					_trainCar.rearCollisionTrigger.interestLayers = Layers.Mask.Vehicle_World;
+					_trainCar.frontCollisionTrigger.interestLayers = Rust.Layers.Mask.Vehicle_World;
+					_trainCar.rearCollisionTrigger.interestLayers = Rust.Layers.Mask.Vehicle_World;
 					plugin.NextFrame(() => { if (_trainEngine != null) _trainEngine.CancelInvoke("DecayTick"); });
 					if (plugin.TrainUnlimitedFuel)
 					{
@@ -220,13 +249,14 @@ namespace Oxide.Plugins
 							fuelContainer.SetFlag(BaseEntity.Flags.Locked, true);
 						}
 					}
+					_trainCar.TrackSpeed = 0;
 					_trainCar.FrontTrackSection.isStation = true;
 				});
 			}
 			private void OnDestroy()
 			{
-					enabled = false;
-					CancelInvoke();
+				enabled = false;
+				CancelInvoke();
 			}
 			public void Die() { if (this != null) { Destroy(this); } }
 			public void movetrain()
@@ -252,7 +282,7 @@ namespace Oxide.Plugins
 			}
 			public void FixedUpdate()
 			{
-				if (_train == null || _trainEngine == null || _trainCar == null) { return; }
+				if (_train == null || _trainEngine == null || _trainCar == null || !_trainEngine.AnyPlayersOnTrain()) { return; }
 				if (_trainCar.TrackSpeed == 0) { return; }
 				Vector3 test0 = _trainCar.GetFrontWheelPos();
 				Vector3 test1 = _trainCar.GetRearWheelPos();
